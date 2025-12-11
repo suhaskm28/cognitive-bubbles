@@ -54,11 +54,16 @@ export default function CognitiveBubblesPractice() {
 
     useEffect(() => {
         dingRef.current = new Audio(
-            "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYBVVVVVVVVVVU="
+            "/sounds/correct.mp3"
         );
         buzzRef.current = new Audio(
-            "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYBqqqqqqqqqqo="
+            "/sounds/wrong.mp3"
         );
+        dingRef.current.volume = 0.6;
+        buzzRef.current.volume = 0.6;
+
+        dingRef.current.load();
+        buzzRef.current.load();
     }, []);
 
     // ---- Utilities ----
