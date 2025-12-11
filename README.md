@@ -1,73 +1,84 @@
-# React + TypeScript + Vite
+# Cognitive Bubbles 🧠
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Cognitive Bubbles** is an interactive arithmetic game designed to test and improve your numerical reasoning speed.
 
-Currently, two official plugins are available:
+Players must select bubbles containing arithmetic expressions  **from the lowest to the highest value** —all within a 10-second limit per round.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## 🎮 Gameplay Overview
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+* Each round presents **three bubbles** with randomly generated integer-based arithmetic expressions.
+* You must **click** each bubble in ascending order of its evaluated value.
+* Each set has a  **10-second timer** .
+* There are **15 rounds** per session, with difficulty increasing level by level.
+* At the end, you’ll receive your  **final score** ,  **accuracy** , and a detailed result summary.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🧩 Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+* Dynamic expression generation with level-based difficulty (Easy → Medium → Hard)
+* Positive integer operands only (no negatives or fractions)
+* Responsive UI with smooth animations
+* Real-time feedback for correct/incorrect selections
+* Keyboard shortcuts (`1`, `2`, `3`, `Space`, `R`)
+* Built-in timer and auto-advance between rounds
+* Final performance summary after completing all rounds
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## ⚙️ Tech Stack
+
+* **React 18** (Vite + TypeScript)
+* **Tailwind CSS v4** for styling
+* **Framer Motion** for animations
+* **Lucide Icons** for visuals
+* **shadcn/ui** components for clean UI design
+
+---
+
+## 🚀 Getting Started
+
+### 1️⃣ Clone the repository
+
+```bash
+git clone https://github.com/<your-username>/cognitive-bubbles.git
+cd cognitive-bubbles
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2️⃣ Install dependencies
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+### 3️⃣ Run locally
+
+```bash
+npm run dev
+```
+
+Open **[http://localhost:5173](http://localhost:5173/)** to play locally.
+
+### 4️⃣ Build for production
+
+```bash
+npm run build
+npm run preview
+```
+
+---
+
+## 🌐 Deployment
+
+This project is optimized for deployment on  **Vercel** .
+
+* Build command: `vite build`
+* Output directory: `dist`
+
+---
+
+## 📄 License
+
+This project is released under the  **MIT License** .
