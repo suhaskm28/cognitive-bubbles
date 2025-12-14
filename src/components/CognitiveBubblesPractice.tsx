@@ -32,11 +32,12 @@ interface HistoryEntry {
     selectedOrder: number[];
     isCorrect: boolean;
     timedOut: boolean;
+    timeUsedSec: number;
 }
 
 export default function CognitiveBubblesPractice() {
     // Config
-    const TOTAL_ROUNDS = 15;
+    const TOTAL_ROUNDS = 25;
     const ROUND_SECONDS = 10;
 
     // State
@@ -47,10 +48,58 @@ export default function CognitiveBubblesPractice() {
     const [secondsLeft, setSecondsLeft] = useState<number>(ROUND_SECONDS);
     const [running, setRunning] = useState<boolean>(false);
     const [muted, setMuted] = useState<boolean>(true);
+    const [vertical, setVertical] = useState(true);
+    const headerRef = useRef<HTMLDivElement | null>(null);
+    const [bubblePx, setBubblePx] = useState<number>(160); // default, will be recalculated
+
+
 
     // Sounds (tiny embedded beeps)
     const dingRef = useRef<HTMLAudioElement | null>(null);
     const buzzRef = useRef<HTMLAudioElement | null>(null);
+    const timeoutRef = useRef<HTMLAudioElement | null>(null);
+
+    // at top with other refs
+    const boardRef = useRef<HTMLDivElement | null>(null);
+
+    // whenever the game starts, bring the board into view
+    useEffect(() => {
+        if (running && boardRef.current) {
+            boardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    }, [running]);
+
+    useEffect(() => {
+        if (!vertical) return; // only apply in vertical layout
+
+        const calc = () => {
+            const vh = window.innerHeight;
+
+            // Measure header/toolbars if you have them wrapped in a single container
+            const headerH = headerRef.current?.offsetHeight ?? 0;
+
+            // Padding/margins in your board card (adjust if needed)
+            const chrome = 48 /* top/btm padding */ + 32 /* title/timer margin */;
+            const available = Math.max(0, vh - headerH - chrome);
+
+            // We want: 3 * size + 2 * gap <= available
+            const gap = 16; // px (Tailwind gap-4 ≈ 16)
+            const maxForHeight = Math.floor((available - 2 * gap) / 3);
+
+            // Also cap by width to avoid bubbles wider than screen
+            const vw = window.innerWidth;
+            const maxForWidth = Math.floor(Math.min(vw * 0.9, 680) * 0.9); // container width budget
+
+            // Reasonable min/max clamps for aesthetics
+            const size = Math.max(96, Math.min(200, Math.min(maxForHeight, maxForWidth)));
+            setBubblePx(size);
+        };
+
+        calc();
+        window.addEventListener("resize", calc);
+        return () => window.removeEventListener("resize", calc);
+    }, [vertical]);
+
 
     useEffect(() => {
         dingRef.current = new Audio(
@@ -59,12 +108,36 @@ export default function CognitiveBubblesPractice() {
         buzzRef.current = new Audio(
             "/sounds/wrong.mp3"
         );
+        timeoutRef.current = new Audio("/sounds/timeout.mp3");
         dingRef.current.volume = 0.6;
         buzzRef.current.volume = 0.6;
+        timeoutRef.current.volume = 0.5;
 
         dingRef.current.load();
         buzzRef.current.load();
+        timeoutRef.current.load();
     }, []);
+    // helper functions near your refs
+    // put at component scope
+    const finalizingRef = useRef(false);
+
+    const stopAllSounds = () => {
+        [dingRef, buzzRef, timeoutRef].forEach(r => {
+            if (r?.current) {
+                r.current.pause();
+                r.current.currentTime = 0;
+            }
+        });
+    };
+
+    const playSound = (ref: React.MutableRefObject<HTMLAudioElement | null>) => {
+        if (!ref.current) return;
+        stopAllSounds();                       // ensure nothing else is playing
+        ref.current.currentTime = 0;
+        // catch prevents unhandled promise rejection in some browsers
+        void ref.current.play().catch(() => { });
+    };
+
 
     // ---- Utilities ----
     // ===== 1) Level config (easy → medium → hard) =====
@@ -79,10 +152,10 @@ export default function CognitiveBubblesPractice() {
 
     // roundIndex is 0-based: 0..14 for 15 rounds
     const levelForRound = (roundIndex: number): LevelConfig => {
-        if (roundIndex < 5) {
+        if (roundIndex < 10) {
             // EASY: small operands; allow 0 ONLY for Addition
             return { ops: ["+", "-", "×", "÷"], min: 1, max: 9, allowZeroForAddition: true };
-        } else if (roundIndex < 10) {
+        } else if (roundIndex < 18) {
             // MEDIUM
             return { ops: ["+", "-", "×", "÷"], min: 2, max: 20, allowZeroForAddition: false };
         } else {
@@ -216,12 +289,33 @@ export default function CognitiveBubblesPractice() {
     const current: Round | undefined = rounds[roundIndex];
 
     const finalizeRound = (timedOut: boolean = false): void => {
-        if (!current) return;
-        const isCorrect = !timedOut && selected.length === 3 && current.correctOrder.every((id: number, i: number) => id === selected[i]);
-        setHistory((h) => [...h, { roundIndex, selectedOrder: selected, isCorrect, timedOut }]);
+        if (finalizingRef.current) return;      // prevent duplicate plays / state
+        finalizingRef.current = true;
+        const isCorrect =
+            !timedOut &&
+            selected.length === 3 &&
+            current.correctOrder.every((id: number, i: number) => id === selected[i]);
+
+        // NEW: seconds actually used this round
+        const timeUsed = Math.min(ROUND_SECONDS, Math.max(0, ROUND_SECONDS - secondsLeft));
+
+        // Store timeUsed in history
+        setHistory((h) => [
+            ...h,
+            { roundIndex, selectedOrder: selected, isCorrect, timedOut, timeUsedSec: timeUsed }
+        ]);
+
         if (!muted) {
-            if (isCorrect) dingRef.current?.play(); else buzzRef.current?.play();
+            if (timedOut) {
+                playSound(timeoutRef);
+            } else if (isCorrect) {
+                playSound(dingRef);
+            } else {
+                playSound(buzzRef);
+            }
         }
+
+
         const next = roundIndex + 1;
         // Always advance the roundIndex so that when next === TOTAL_ROUNDS
         // `current` becomes undefined and the Completed UI (final score) renders.
@@ -235,6 +329,8 @@ export default function CognitiveBubblesPractice() {
             setSecondsLeft(0);
             setRunning(false);
         }
+        // release guard after state queue flushes
+        setTimeout(() => { finalizingRef.current = false; }, 0);
     };
 
     // Auto-advance when 3 picks done
@@ -270,17 +366,27 @@ export default function CognitiveBubblesPractice() {
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+
     const score = useMemo(() => history.filter((h) => h.isCorrect).length, [history]);
     const incorrect = useMemo(() => history.filter((h) => !h.isCorrect && !h.timedOut).length, [history]);
     const timeouts = useMemo(() => history.filter((h) => h.timedOut).length, [history]);
     const accuracy = useMemo(() => (TOTAL_ROUNDS ? Math.round((score / TOTAL_ROUNDS) * 100) : 0), [score]);
     const isFinished = roundIndex >= TOTAL_ROUNDS;
     const pct = useMemo(() => (secondsLeft / ROUND_SECONDS) * 100, [secondsLeft]);
+    const totalTimeUsedSec = useMemo(
+        () => history.reduce((sum, h) => sum + (h.timeUsedSec ?? 0), 0),
+        [history]
+    );
+    const totalTimeAvailableSec = TOTAL_ROUNDS * ROUND_SECONDS;
+
+    const formatTime = (s: number) =>
+        `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
 
     return (
         <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
             <div className="mx-auto max-w-5xl">
-                <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Cognitive Bubbles — Practice</h1>
                         <p className="text-sm text-slate-600">Select the bubbles from lowest to highest value. Each expression has a single arithmetic operation (or a single number). 10 seconds per set. 15 sets per run.</p>
@@ -294,9 +400,13 @@ export default function CognitiveBubblesPractice() {
                             )}
                         </Button>
                         <Button variant="outline" onClick={bootstrap} className="rounded-2xl"><RotateCcw className="w-4 h-4 mr-2" />Restart</Button>
+                        <Button variant="outline" onClick={() => setVertical(v => !v)} className="rounded-2xl">
+                            {vertical ? "Horizontal" : "Vertical"} layout
+                        </Button>
                         <Button variant="ghost" onClick={() => setMuted((m) => !m)} className="rounded-2xl" title={muted ? "Unmute" : "Mute"}>
                             {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                         </Button>
+
                     </div>
                 </header>
 
@@ -324,32 +434,82 @@ export default function CognitiveBubblesPractice() {
                 </div>
 
                 {/* Game board */}
-                <div className="bg-white rounded-3xl shadow-lg p-6 mb-6">
+                <div ref={boardRef} className="bg-white rounded-3xl shadow-lg p-6 mb-6" style={vertical ? { minHeight: `calc(100vh - ${(headerRef.current?.offsetHeight ?? 0) + 48}px)` } : {}}>
                     {!current ? (
                         <div className="text-center py-16">
                             <div className="text-xl">Completed. Final Score: <span className="font-semibold">{score} / {TOTAL_ROUNDS}</span></div>
                             <div className="mt-2 text-sm text-slate-600">Accuracy: {accuracy}% · Incorrect: {incorrect} · Timed out: {timeouts}</div>
+                            <div className="mt-1 text-sm text-slate-600">Time used: {formatTime(totalTimeUsedSec)} / {formatTime(totalTimeAvailableSec)}</div>
                             <div className="mt-4 flex items-center justify-center gap-3">
                                 <Button onClick={bootstrap} className="rounded-2xl"><RotateCcw className="w-4 h-4 mr-2" />Play Again</Button>
                             </div>
                         </div>
                     ) : (
                         <div>
-                            <div className="text-center text-slate-700 mb-4">Select from lowest to highest value</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 place-items-center">
-                                {current.bubbles.map((b) => {
+                            <div className="text-center text-slate-700 mb-4">
+                                Select from lowest to highest value {vertical ? "(top to bottom)" : ""}
+                            </div>
+
+                            <div
+                                // Containers are strictly separated so styles don't bleed across
+                                className={
+                                    vertical
+                                        ? "flex flex-col justify-between w-full max-w-[520px] mx-auto"
+                                        : "grid grid-cols-1 sm:grid-cols-3 gap-6 place-items-center"
+                                }
+                                // Only vertical gets 100% height (so all 3 fit with no scroll)
+                                style={vertical ? { height: "100%" } : undefined}
+                            >
+                                {current.bubbles.map((b, i) => {
                                     const rank = selected.indexOf(b.id);
                                     const isPicked = rank >= 0;
+
+                                    // Zig-zag only for vertical (removed for horizontal)
+                                    const staggerClass = vertical
+                                        ? i % 2 === 0
+                                            ? "self-center md:self-start md:ml-4"
+                                            : "self-center md:self-end md:mr-4"
+                                        : "";
+
+                                    // Horizontal → original fixed sizes
+                                    // Vertical → dynamic bubblePx (no inline width/height if horizontal)
+                                    const sizeClassesHorizontal =
+                                        "w-48 h-48 sm:w-44 sm:h-44 md:w-56 md:h-56";
                                     return (
                                         <motion.button
                                             key={b.id}
                                             layout
                                             onClick={() => togglePick(b.id)}
-                                            className={`relative w-48 h-48 sm:w-44 sm:h-44 md:w-56 md:h-56 rounded-full flex items-center justify-center select-none shadow-lg border transition-all ${isPicked ? "scale-95 border-emerald-500" : "border-transparent"} ${running ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
-                                            style={{ background: "radial-gradient(circle at 30% 30%, rgba(16,185,129,0.15), rgba(59,130,246,0.15))" }}
+                                            initial={
+                                                vertical ? { opacity: 0, x: i % 2 === 0 ? -16 : 16 } : { opacity: 0 }
+                                            }
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ duration: 0.18 }}
+                                            className={`${staggerClass} relative rounded-full flex items-center justify-center select-none shadow-lg border transition-all ${isPicked ? "scale-95 border-emerald-500" : "border-transparent"
+                                                } ${running ? "cursor-pointer" : "cursor-not-allowed opacity-60"} ${vertical ? "" : sizeClassesHorizontal
+                                                }`}
+                                            style={
+                                                vertical
+                                                    ? {
+                                                        width: bubblePx,   // ONLY in vertical
+                                                        height: bubblePx,  // ONLY in vertical
+                                                        background:
+                                                            "radial-gradient(circle at 30% 30%, rgba(16,185,129,0.15), rgba(59,130,246,0.15))",
+                                                    }
+                                                    : {
+                                                        background:
+                                                            "radial-gradient(circle at 30% 30%, rgba(16,185,129,0.15), rgba(59,130,246,0.15))",
+                                                    }
+                                            }
                                             aria-pressed={isPicked}
                                         >
-                                            <div className="text-2xl md:text-3xl font-semibold text-slate-900">{b.display}</div>
+                                            <div
+                                                className={`font-semibold text-slate-900 ${vertical ? "text-lg md:text-xl" : "text-2xl md:text-3xl"
+                                                    }`}
+                                            >
+                                                {b.display}
+                                            </div>
+
                                             <AnimatePresence>
                                                 {isPicked && (
                                                     <motion.div
@@ -358,7 +518,9 @@ export default function CognitiveBubblesPractice() {
                                                         exit={{ opacity: 0, scale: 0.8 }}
                                                         className="absolute -top-2 -right-2 bg-emerald-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow"
                                                         title={`Pick #${rank + 1}`}
-                                                    >{rank + 1}</motion.div>
+                                                    >
+                                                        {rank + 1}
+                                                    </motion.div>
                                                 )}
                                             </AnimatePresence>
                                         </motion.button>
@@ -378,6 +540,7 @@ export default function CognitiveBubblesPractice() {
                             <div><span className="font-semibold">Accuracy:</span> {accuracy}%</div>
                             <div><span className="font-semibold">Incorrect:</span> {incorrect}</div>
                             <div><span className="font-semibold">Timed out:</span> {timeouts}</div>
+                            <div><span className="font-semibold">Time used:</span> {formatTime(totalTimeUsedSec)} / {formatTime(totalTimeAvailableSec)}</div>
                         </div>
                     </div>
                 )}
